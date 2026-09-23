@@ -1,0 +1,13 @@
+.venv/
+.env
+.env.*
+!.env.example
+!.env.sample
+__pycache__/
+*.pyc
+courses/
+*.mp4
+*.wav
+*.m4a
+pku-lecture-notes/scripts/tmp/
+course-download/tmp/

@@ -1,0 +1,12 @@
+[project]
+name = "pku-lecture-notes"
+version = "0.1.0"
+description = "Convert PKU lecture recordings into faithful Markdown notes + timestamped transcription."
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "numpy>=1.26",
+]
+
+[tool.uv]
+package = false
