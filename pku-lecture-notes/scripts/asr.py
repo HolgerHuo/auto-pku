@@ -31,6 +31,7 @@ FILLER_PATTERNS = [
 _FILLER = [re.compile(p, re.I) for p in FILLER_PATTERNS]
 
 MAX_LOOP_RUN = 3  # >3 consecutive identical sentences = hallucination loop
+MAX_SENTENCE_CHARS = 2000
 
 def _span_key(start: float, end: float) -> str:
     return f"{int(round(start))}_{int(round(end))}"
@@ -42,7 +43,7 @@ def _norm(text: str) -> str:
 
 def _split_sentences(text: str) -> list[str]:
     """Split on sentence-ending punctuation, keeping punctuation attached."""
-    parts = re.split(r"(?<=[。！？!?])\s*", (text or "").strip())
+    parts = re.split(r"(?<=[。！？.!?])\s*", (text or "").strip())
     return [p for p in (s.strip() for s in parts) if p]
 
 
@@ -58,22 +59,76 @@ def _clean_text(text: str) -> tuple[str, bool]:
     Triggered=True when either rule removed anything, so the caller can decide
     whether to split-retry the chunk.
     """
+    text, char_runs = re.subn(r"([^\s])\1{5,}", lambda m: m.group(1) * 3, text or "")
+    text, token_runs = re.subn(
+        r"(?P<token>[^\W\d_]{1,20})(?:[\s,，]+(?P=token)){5,}",
+        lambda m: ", ".join([m.group("token")] * 3),
+        text,
+        flags=re.UNICODE,
+    )
+    text, phrase_runs = re.subn(
+        r"(?P<phrase>[^,，。！？.!?\n]{2,80})(?:[,，]+\s*(?P=phrase)){5,}",
+        lambda m: ", ".join([m.group("phrase").strip()] * 3),
+        text,
+    )
     out: list[str] = []
     run = 0
     prev = None
-    triggered = False
+    seen: dict[str, int] = {}
+    triggered = bool(char_runs or token_runs or phrase_runs)
     for s in _split_sentences(text):
+        if len(s) > MAX_SENTENCE_CHARS:
+            s = s[:MAX_SENTENCE_CHARS]
+            triggered = True
         if _has_filler(s):
             triggered = True
             continue
         k = _norm(s)
         run = run + 1 if k == prev and k else 1
         prev = k
-        if run > MAX_LOOP_RUN:
+        seen[k] = seen.get(k, 0) + 1 if k else 1
+        if run > MAX_LOOP_RUN or (k and seen[k] > MAX_LOOP_RUN):
             triggered = True
             continue
         out.append(s)
     return "".join(out), triggered
+
+
+def _strip_context_echo(text: str, prompt: str = "", hotwords: str = "") -> tuple[str, bool]:
+    """Remove exact ASR-context banners echoed into the transcript.
+
+    Some compatible providers prepend the prompt repeatedly without sentence
+    punctuation, so the sentence-level loop filter cannot recognize it.
+    Only caller-supplied context is removed; lecture speech is otherwise left
+    untouched.
+    """
+    cleaned = text or ""
+    triggered = False
+    topic_marker = "Lecture topic:"
+    if cleaned.count(topic_marker) >= 3:
+        cleaned = cleaned.split(topic_marker, 1)[0]
+        triggered = True
+    elif topic_marker in cleaned:
+        cleaned = cleaned.replace(topic_marker, "")
+        triggered = True
+    prompt = prompt.strip()
+    candidates = [prompt]
+    if prompt.startswith("Lecture topic: "):
+        candidates.append(prompt.removeprefix("Lecture topic: "))
+    marker = "Key terms (spell exactly): "
+    candidates.append(marker.strip())
+    if marker in prompt:
+        candidates.append(prompt.split(marker, 1)[1].strip())
+    if hotwords.strip():
+        candidates.extend([
+            hotwords.strip(),
+            f"Key terms (spell exactly): {hotwords.strip()}",
+        ])
+    for candidate in sorted({c for c in candidates if c}, key=len, reverse=True):
+        if candidate in cleaned:
+            cleaned = cleaned.replace(candidate, "")
+            triggered = True
+    return cleaned.strip(), triggered
 
 
 def cut_chunk(video: Path, start: float, end: float, cache: Cache,
@@ -162,7 +217,11 @@ def transcribe_chunk(video: Path, start: float, end: float, cache: Cache,
     span = end - start
     media = cut_chunk(video, start, end, cache, cfg)
     raw = _transcribe(media, cfg, language=language, hotwords=hotwords, prompt=prompt)
-    cleaned, triggered = _clean_text(raw)
+    without_echo, echo_triggered = _strip_context_echo(raw, prompt, hotwords)
+    cleaned, quality_triggered = _clean_text(without_echo)
+    if echo_triggered:
+        log(f"  asr: removed echoed context from {srtot(start)}-{srtot(end)}")
+    triggered = quality_triggered
 
     if triggered and span > cfg.asr_min_retry_chunk + 1:
         mid = start + span / 2
@@ -208,6 +267,17 @@ def transcribe_all(video: Path, duration: float, cache: Cache, cfg: Config,
     plan = plan_chunks(duration, cfg.asr_chunk_seconds)
     cache_name = "asr_chunks.json"
     done = cache.load_json(cache_name, {}) or {}
+    normalized_cache = False
+    for rec in done.values():
+        cleaned, echo_triggered = _strip_context_echo(
+            rec.get("text", ""), prompt=prompt, hotwords=hotwords)
+        cleaned, quality_triggered = _clean_text(cleaned)
+        if echo_triggered or quality_triggered:
+            rec["text"] = cleaned
+            normalized_cache = True
+    if normalized_cache:
+        log("  asr: removed echoed context from cached transcript chunks")
+        cache.save_json(cache_name, done)
     todo = [(s, e) for s, e in plan if _span_key(s, e) not in done]
     log(f"  asr: {len(todo)} chunks of {cfg.asr_chunk_seconds:.0f}s "
         f"({len(plan) - len(todo)} cached), language={language or '(auto)'}")

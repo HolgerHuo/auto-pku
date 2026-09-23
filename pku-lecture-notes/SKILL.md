@@ -7,8 +7,11 @@ description: Convert a lecture recording into synthesized notes.md and a timesta
 
 Convert a lecture recording into:
 
-- `notes.md`: synthesized study notes with a summary, outline, topic sections,
-  and surfaced requirements or homework.
+- `notes.md`: detailed study notes organized by what the lecture TAUGHT (a
+  content-based outline, not time or slide order): a lecture-level summary,
+  then topic sections that fold the slide content into the prose, with
+  requirements and homework surfaced up front. Reads like a careful student's
+  after-class notes.
 - `transcription.md`: the full ASR transcript with chunk-level timestamps.
 
 The pipeline calls configurable OpenAI-compatible vision and transcription
@@ -44,7 +47,10 @@ Run stages in this order:
 3. `theme`: infer language, topic, and vocabulary from early slides.
 4. `asr`: transcribe fixed-size chunks using slide vocabulary as context.
 5. `merge`: align sentences with slide-defined sections.
-6. `notes`: synthesize bounded note units and a lecture summary.
+6. `notes`: synthesize bounded note units, then integrate them into a
+   content-organized lecture document (a planning call proposes a topic
+   outline over the units; one call per outline section merges that
+   section's units into detailed notes), plus a lecture-level summary.
 
 Do not skip dependencies when forcing a stage. Changes to slides affect theme,
 ASR hints, merging, and notes; changes to ASR affect merging and notes.
@@ -53,7 +59,11 @@ ASR hints, merging, and notes; changes to ASR affect merging and notes.
 
 Before finishing, inspect both generated files. Confirm that proper nouns agree
 with slides, requirements and deadlines retain exact details, filler and loops
-are absent, and the notes do not invent unsupported material.
+are absent, and the notes do not invent unsupported material. For `notes.md`,
+confirm the body is organized by content (topic headings, no time-based or
+slide-by-slide sections), that the slide content is folded into the prose
+instead of dumped as raw `[Slide ...]` lines, and that no fallback labels like
+"Part of the lecture" or "Lecture segment" remain.
 
 ## Recording downloader
 

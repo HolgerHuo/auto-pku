@@ -61,7 +61,20 @@ slide or transcript contains an unusually long unpunctuated block.
 
 Each unit is synthesized into study notes. Failed synthesis falls back to raw
 material so content is not lost. Unit cache keys include prompt version, span,
-and material digest. A final bounded request builds the overview, main thread,
-key points, requirements, homework, and open questions.
+and material digest.
 
-`notes.md` and `transcription.md` are rendered from the same cached timeline.
+Integration then reorganizes the time-ordered unit notes into a
+content-based lecture document: one planning call proposes 6-12 top-level
+sections by topic (every unit assigned to exactly one section, in
+chronological order; the plan is validated and cached), and one call per
+section merges that section's units into detailed student-style notes with
+slide content folded into the prose. Failed plans fall back to chronological
+grouping; failed sections keep their concatenated unit notes. Section cache
+keys include the integration version, title, description, and material digest.
+
+A final bounded request builds the overview, main thread, key points,
+requirements, homework, and open questions.
+
+`notes.md` is rendered from the integrated sections (title, summary, then
+topic sections). `transcription.md` stays the mechanical chunk-stamped
+transcript.

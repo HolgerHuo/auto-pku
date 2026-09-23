@@ -150,10 +150,10 @@ def run_lecture(lecture_dir: Path, video: Path, cfg: Config, stages: list[str],
     # ---- merge + notes ------------------------------------------------------
     # merge: sections (slide boundaries + sentence-level speech attribution)
     # and note units (boundary-aligned groups capped at notes_unit_chars).
-    # notes: one vision-model call per unit synthesizes study notes from the
-    # unit's slide material + lecture speech; a final cheap call writes the
-    # summary. Unit synthesis is cached by content hash (see notes._unit_key),
-    # so changing slides/ASR text only re-synthesizes the affected units.
+    # notes: per-unit synthesis (cached by content hash), then a
+    # lecture-level integration pass that reorganizes the unit notes into a
+    # content-based outline (plan + sections cached by content), then the
+    # summary.
     if want("merge") or want("notes"):
         sections = merge_mod.build_sections(slide_recs, asr_chunks, duration)
         cache.save_json("sections.json", sections)
@@ -170,6 +170,10 @@ def run_lecture(lecture_dir: Path, video: Path, cfg: Config, stages: list[str],
                 }
                 unit_mds = notes_mod.synthesize_units(
                     sections, units, context, cache, cfg)
+                integrated = notes_mod.integrate_notes(
+                    sections, unit_mds, context, cache, cfg)
+                for title, _desc, _md in integrated:
+                    log(f"  integrate: ## {title[:80]}")
                 summary_md = notes_mod.synthesize_summary(
                     sections, units, unit_mds, context, cfg)
                 meta = {
@@ -184,7 +188,8 @@ def run_lecture(lecture_dir: Path, video: Path, cfg: Config, stages: list[str],
                     "generated_at": time.strftime("%Y-%m-%d %H:%M"),
                 }
                 notes_mod.write_outputs(lecture_dir, sections, asr_chunks,
-                                        units, unit_mds, summary_md, meta)
+                                        units, unit_mds, integrated,
+                                        summary_md, meta)
                 cache.record_stage("notes", fingerprint, n_sections=len(sections),
                                    n_units=len(units))
 
