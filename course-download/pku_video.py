@@ -169,7 +169,7 @@ def list_recordings(s: requests.Session, course_id: int) -> list[Recording]:
         if sp.get("is_m3u8") != "yes" or not sp.get("contents"):
             continue  # not (yet) recorded
         recs.append(Recording(
-            sub_id=it["sub_id"], course_id=course_id,
+            sub_id=int(it["sub_id"]), course_id=course_id,
             title=(it.get("sub_title") or it.get("title") or f"sub{it['sub_id']}").strip(),
             begin=int(it.get("course_begin") or 0),
             duration_tick=int(sp.get("contents_duration") or 0),
