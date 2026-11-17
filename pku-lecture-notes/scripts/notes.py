@@ -308,7 +308,7 @@ def synthesize_units(sections: list[dict], units: list[dict], context: dict,
             try:
                 content, reasoning = _chat(
                     prompt, cfg, max_tokens=cfg.notes_max_tokens,
-                    label=f"unit {u['i_start']}")
+                    label=f"unit {u['i_start']}", reasoning_effort="low")
                 if content and not is_cot_garbage(content):
                     md = content
                 elif not content:

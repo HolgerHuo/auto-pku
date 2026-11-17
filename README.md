@@ -37,11 +37,19 @@ configuration details.
 
 ## Downloader
 
-Keep exported cookies in `course-download/tmp/`, which is ignored by Git.
+The [course-download skill](course-download/SKILL.md) describes browser login,
+identity-based synchronization, legacy inventory import and recovery.
+Keep exported cookies in the ignored `course-download/tmp/` directory.
 
 ```bash
-uv run --with requests python course-download/pku_video.py --help
+uv run --project course-download course-download/pku_video.py --help
+uv run --project course-download course-download/pku_video.py \
+  --course <media-course-id> --cookies <cookies.txt> --out <course-directory> --all
 ```
+
+The downloader skips verified manifest entries, caches HLS segments for resume,
+and adjusts concurrency using measured bandwidth. Outputs are verified before
+becoming final. Dependencies are pinned in `course-download/uv.lock`.
 
 Only download recordings you are authorized to access and retain.
 
